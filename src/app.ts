@@ -1,24 +1,80 @@
+// Importez les dépendances nécessaires
 import express from 'express';
-import {v4 as uuidv4} from 'uuid';
+import bodyParser from 'body-parser';
+import jwt from 'jsonwebtoken';
 
-
-
+// Créez une instance de l'application Express
 const app = express();
-const port = 3000; // Le port sur lequel votre serveur écoutera
 
-app.use(express.json());
+// Configurez bodyParser pour analyser le JSON dans les requêtes
+app.use(bodyParser.json());
 
-// Route pour générer un token
+let tokens: string[] = [];
+
+function createToken(){
+
+
+// Remplacez la clé secrète par un mot de passe solide
+const secretKey = 'votre_cle_secrete';
+
+// Créez la route `/api/token`
 app.post('/api/token', (req, res) => {
-  // Générez un token unique ici (vous pouvez utiliser une bibliothèque pour cela)
-  let token = uuidv4();
+  const { email } = req.body;
 
+  // Vérifiez si l'email est fourni dans la requête
+  if (!email) {
+    return res.status(400).json({ message: 'veuillez fournir un email' });
+  }
+
+  // Génére un token unique 
+  // modifie la durée d'expiration
+  var token = jwt.sign({ email }, secretKey, { expiresIn: '1h' });
   console.log(token);
-  // Retournez le token généré en réponse
-  res.json({ token: token });
+  tokens.push(token);
+
+  const result =  res.status(200).json({ token });
+
 });
 
-// Démarrer le serveur
+// Port sur lequel l'application écoutera
+const port = 3000;
+
+// Démarrez le serveur
 app.listen(port, () => {
   console.log(`Serveur en cours d'exécution sur le port ${port}`);
 });
+
+}
+
+
+function justifyText(tokens: string[]){
+  // Appliquez le rate limit et l'authentification à la route `/api/justify`
+  app.post('/api/justify', (req, res) => {
+    const text = req.body.text;
+    if (!text) {
+      return res.status(400).json({ message: 'Le texte est requis' });
+    }
+    console.log(tokens);
+    if(!tokens.includes(req.body.token)){
+      return res.status(400).json({ message: 'token invalide' });
+    }
+
+    //justification du text        
+    
+
+    res.status(200).send(text);
+  });
+
+  // Fonction pour justifier le texte
+
+  // Port sur lequel l'application écoutera
+  const port = 8080;
+
+  // Démarrez le serveur
+  app.listen(port, () => {
+    console.log(`Serveur en cours d'exécution sur le port ${port}`);
+  });
+}
+
+createToken();
+justifyText(tokens);
