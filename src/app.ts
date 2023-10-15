@@ -47,10 +47,14 @@ app.listen(port, () => {
 }
 
 
-function justifyText(tokens: string[]){
+function createJustifyAPI(tokens: string[]){
   // Appliquez le rate limit et l'authentification à la route `/api/justify`
   app.post('/api/justify', (req, res) => {
     const text = req.body.text;
+    const token = req.body.token;
+    if(!tokens.includes(token)){
+      return res.status(400).json({message : 'invalid token'});
+    }
     if (!text) {
       return res.status(400).json({ message: 'Le texte est requis' });
     }
@@ -77,4 +81,4 @@ function justifyText(tokens: string[]){
 }
 
 createToken();
-justifyText(tokens);
+createJustifyAPI(tokens);
