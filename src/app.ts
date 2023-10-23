@@ -30,36 +30,36 @@ function listen(port: number) {
  * Check if the token is valid 
  **/
 export function checkToken(token: string) {
-  if(token == '') return false;
-  for(let i = 0; i < data.length; i++) {
-    if(data[i].token == token) {
+  if (token == '') return false;
+  for (let i = 0; i < data.length; i++) {
+    if (data[i].token == token) {
       return true;
     }
   }
   return false;
 }
 export function checkEmail(email: string) {
-  if(email == '') return false;
+  if (email == '') return false;
   const emailFormat = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-  if(email.match(emailFormat)){
+  if (email.match(emailFormat)) {
     return true;
   }
   return false;
 }
 
-export function createToken(email: string, key : string) {
-  if(email == '' || key == '' ) return '';
-  let token =  jwt.sign({ email }, key, { expiresIn: '24h' });
+export function createToken(email: string, key: string) {
+  if (email == '' || key == '') return '';
+  let token = jwt.sign({ email }, key, { expiresIn: '24h' });
   return token;
 }
 
-export function createUser(email: string, token: string){
-  if(email == '' || token == '') {
-    return; 
-  }; 
+export function createUser(email: string, token: string) {
+  if (email == '' || token == '') {
+    return;
+  };
   // check if the email already exists
-  for(let i = 0; i < data.length; i++) {
-    if(data[i].email == email) {
+  for (let i = 0; i < data.length; i++) {
+    if (data[i].email == email) {
       data[i].token = token;
       data[i].wordCount = 0;
       return;
@@ -68,7 +68,7 @@ export function createUser(email: string, token: string){
   let expirationDate = new Date();
   //rajouter 24h en millisecondes
   expirationDate.setTime(expirationDate.getTime() + 86400000);
-  data.push({email: email, token: token, wordCount: 0, expirationDate: expirationDate});
+  data.push({ email: email, token: token, wordCount: 0, expirationDate: expirationDate });
 }
 
 
@@ -77,29 +77,29 @@ export function createUser(email: string, token: string){
  * Check if the number of words is less than 80000 for the day 
  */
 export function checkWords(token: string, text: string) {
-  let words = text.split(' ').length-1;
-  if(token == '') return -1;
-  if(words > 80000) return 0;   
+  let words = text.split(' ').length - 1;
+  if (token == '') return -1;
+  if (words > 80000) return 0;
   let remainingWords = 0;
-  for(let i = 0; i < data.length; i++) {
-    if(data[i].token == token) {
+  for (let i = 0; i < data.length; i++) {
+    if (data[i].token == token) {
       let date = new Date();
       let expirationDate = data[i].expirationDate.getTime();
       //vérifier si la date est est la même que la date d'expiration 
       //console.log("date :"+date.getTime());
       //console.log("expiration :"+expirationDate);
 
-      if(date.getTime() > expirationDate) {
+      if (date.getTime() > expirationDate) {
         data[i].wordCount = words;
         //console.log("1 word count"+ data[i].wordCount);
         data[i].expirationDate.setTime(expirationDate + 86400000);
-      }else{
+      } else {
         let newWordCount = data[i].wordCount + words;
         //console.log("newWord count :" + newWordCount);
-        if(newWordCount > 80000){
+        if (newWordCount > 80000) {
           return 0;
         }
-        data[i].wordCount = newWordCount; 
+        data[i].wordCount = newWordCount;
         //console.log("Word count :" + data[i].wordCount);
 
       }
@@ -114,7 +114,7 @@ export function checkWords(token: string, text: string) {
 // A améliorer
 export function justifyText(text: string, lineWidth: number, remainingWords: number) {
   const words = text.split(' ');
-  let lines: string[] = ['Remaining Words: ' + remainingWords]; 
+  let lines: string[] = ['Remaining Words: ' + remainingWords];
   lines.push('');
   let current_line = '';
 
@@ -149,9 +149,9 @@ export function justifyText(text: string, lineWidth: number, remainingWords: num
       }
     }
   }
-  
+
   let justified_text = lines.join('\n');
-  
+
   /*fs.writeFile('justified_text.txt', justified_text, 'utf8', (err) => {
     if (err) {
       console.error('Erreur lors de l\'écriture du fichier :', err);
@@ -173,18 +173,18 @@ function createTokenApi() {
     if (!email) {
       return res.status(400).json({ message: 'veuillez fournir un email' });
     }
-    if(checkEmail(email)){
+    if (checkEmail(email)) {
       // Génére un token unique 
       // modifie la durée d'expiration
-      var token = createToken(email, secretKey);    
+      var token = createToken(email, secretKey);
       console.log(token);
-      createUser(email,token);
+      createUser(email, token);
       res.status(200).json({ token });
-    }else{
-      res.status(400).json({ message : 'invalid email' });
+    } else {
+      res.status(400).json({ message: 'invalid email' });
     }
 
-    
+
   });
   var port = 3000;
   // Démarrez le serveur
@@ -195,14 +195,14 @@ function createTokenApi() {
 
 function createJustifyAPI() {
   // Appliquez le rate limit et l'authentification à la route `/api/justify`
-  app.post('/api/justify', upload.single('fichier'),(req, res) => {
+  app.post('/api/justify', upload.single('fichier'), (req, res) => {
     let text;
     let remainingWords = 0;
     // TO-DO : attention au ", ', ` 
     const fileBuffer = req.file?.buffer;
     console.log(fileBuffer);
     //lecture du file buffer
-    if(fileBuffer){
+    if (fileBuffer) {
       text = fileBuffer.toString('utf-8');
     }
     console.log(text);
@@ -219,20 +219,21 @@ function createJustifyAPI() {
       console.log("invalid token");
       return res.status(400).send({ message: 'invalid token' });
     }
-    if(text){
-      remainingWords = checkWords(token,text);
-      if(remainingWords == 0) {
+    if (text) {
+      remainingWords = checkWords(token, text);
+      if (remainingWords == 0) {
         console.log("Payment Required");
         return res.status(402).send({ message: 'Payment Required' });
       }
-    }else{
+    } else {
       console.log("text is required");
       return res.status(400).send({ message: 'text is required' });
     }
     console.log(data);
     //justification of the text 
-    let justify_text = justifyText(text, lineWidth,remainingWords);
+    let justify_text = justifyText(text, lineWidth, remainingWords);
     res.status(200).send(justify_text);
+
   });
 
   var port = 8080;
