@@ -1,33 +1,28 @@
-// Importez les dépendances nécessaires
 import express from 'express';
 import bodyParser from 'body-parser';
 import jwt from 'jsonwebtoken';
-import fs from 'fs';
 const multer = require('multer');
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
-const lineWidth = 80;
-
-// Créez une instance de l'application Express
 export const app = express();
-
-// Configurez bodyParser pour analyser le JSON dans les requêtes
 app.use(bodyParser.json());
-
+const lineWidth = 80;
 const secretKey = '123456';
+//data contient les utilisateurs enregistres
 export let data: { email: string; token: string; wordCount: number; expirationDate: Date }[] = [];
 
-
+/**
+ * Fonction de demarrage du serveur
+ */
 function listen(port: number) {
-  // Démarrez le serveur
   app.listen(port, () => {
-    console.log(`Serveur en cours d'exécution sur le port ${port}`);
+    console.log(`Listening on port ${port}`);
   });
 }
 
 /** 
- * Check if the token is valid 
+ * Verifie si le token est enregistre dans data
  **/
 export function checkToken(token: string) {
   if (token == '') return false;
@@ -38,7 +33,10 @@ export function checkToken(token: string) {
   }
   return false;
 }
-export function checkEmail(email: string) {
+/**
+ *  Verifie si un email est bien formate
+ */
+export function checkEmailFormat(email: string) {
   if (email == '') return false;
   const emailFormat = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
   if (email.match(emailFormat)) {
@@ -47,17 +45,25 @@ export function checkEmail(email: string) {
   return false;
 }
 
+/**
+ * Creation d'un token pour une cle et un email donnee.
+ * Utilisation de la librairie jsonwebtoken. 
+ */
 export function createToken(email: string, key: string) {
   if (email == '' || key == '') return '';
   let token = jwt.sign({ email }, key, { expiresIn: '24h' });
   return token;
 }
 
+/**
+ * Creation d'un utilisateur identifié par son email et son token
+ * Ajout de l'utilisateur à data 
+ */
 export function createUser(email: string, token: string) {
   if (email == '' || token == '') {
     return;
   };
-  // check if the email already exists
+  // verification de l'exitence de l'utilisateur
   for (let i = 0; i < data.length; i++) {
     if (data[i].email == email) {
       data[i].token = token;
@@ -66,7 +72,7 @@ export function createUser(email: string, token: string) {
     }
   }
   let expirationDate = new Date();
-  //rajouter 24h en millisecondes
+  //rajoute de 24h en millisecondes
   expirationDate.setTime(expirationDate.getTime() + 86400000);
   data.push({ email: email, token: token, wordCount: 0, expirationDate: expirationDate });
 }
@@ -74,7 +80,11 @@ export function createUser(email: string, token: string) {
 
 
 /**
- * Check if the number of words is less than 80000 for the day 
+ * Verifie si le nombre de mots est inferieur à 80000
+ * Si le token est vide, retourne -1
+ * Si le nombre de mots est superieur à 80000, retourne 0
+ * Sinon retourne le nombre de mots restants,
+ * et met à jour le nombre de mots de l'utilisateur
  */
 export function checkWords(token: string, text: string) {
   let words = text.split(' ').length - 1;
@@ -85,23 +95,15 @@ export function checkWords(token: string, text: string) {
     if (data[i].token == token) {
       let date = new Date();
       let expirationDate = data[i].expirationDate.getTime();
-      //vérifier si la date est est la même que la date d'expiration 
-      //console.log("date :"+date.getTime());
-      //console.log("expiration :"+expirationDate);
-
       if (date.getTime() > expirationDate) {
         data[i].wordCount = words;
-        //console.log("1 word count"+ data[i].wordCount);
         data[i].expirationDate.setTime(expirationDate + 86400000);
       } else {
         let newWordCount = data[i].wordCount + words;
-        //console.log("newWord count :" + newWordCount);
         if (newWordCount > 80000) {
           return 0;
         }
         data[i].wordCount = newWordCount;
-        //console.log("Word count :" + data[i].wordCount);
-
       }
       remainingWords = 80000 - data[i].wordCount;
     }
@@ -111,106 +113,91 @@ export function checkWords(token: string, text: string) {
 
 
 
-// A améliorer
+/**
+ * Fonction de justification du texte 
+ */
 export function justifyText(text: string, lineWidth: number, remainingWords: number) {
   const words = text.split(' ');
+  // affichage du nombre de mot restant a l'utilisateur
   let lines: string[] = ['Remaining Words: ' + remainingWords];
   lines.push('');
-  let current_line = '';
+  let currentLine = '';
 
+  // separation du texte en lignes de longueur lineWidth
   for (let j = 0; j < words.length; j++) {
-    if (current_line.length + words[j].length <= lineWidth) {
-      current_line += words[j] + ' ';
+    if (currentLine.length + words[j].length <= lineWidth) {
+      currentLine += words[j] + ' ';
     } else {
-      lines.push(current_line.trim());
-      current_line = words[j] + ' ';
+      lines.push(currentLine.trim());
+      currentLine = words[j] + ' ';
     }
   }
-  lines.push(current_line);
+  lines.push(currentLine);
 
-  //répartision des espaces
+  // repatition des espaces pour chaque lignes
   for (let i = 1; i < lines.length; i++) {
     if (lines[i].length < lineWidth) {
-      let words_line = lines[i].split(' ');
-      let nb_gaps = words_line.length - 1;
-      let space_need = lineWidth - lines[i].length;
+      let wordsLine = lines[i].split(' ');
+      let nbGaps = wordsLine.length - 1; 
+      let spaceNeed = lineWidth - lines[i].length; 
 
-      if (nb_gaps > 0) {
-        let extraSpaces = space_need % nb_gaps;
-        let spacesPerGap = Math.floor(space_need / nb_gaps);
+      if (nbGaps > 0) {
+        let extraSpaces = spaceNeed % nbGaps;
+        let spacesPerGap = Math.floor(spaceNeed / nbGaps);
 
-        for (let j = 0; j < nb_gaps; j++) {
-          words_line[j] += ' '.repeat(spacesPerGap);
+        for (let j = 0; j < nbGaps; j++) {
+          wordsLine[j] += ' '.repeat(spacesPerGap);
           if (j < extraSpaces) {
-            words_line[j] += ' ';
+            wordsLine[j] += ' ';
           }
         }
-        lines[i] = words_line.join(' ');
+        lines[i] = wordsLine.join(' ');
       }
     }
   }
-
   let justified_text = lines.join('\n');
-
-  /*fs.writeFile('justified_text.txt', justified_text, 'utf8', (err) => {
-    if (err) {
-      console.error('Erreur lors de l\'écriture du fichier :', err);
-    } else {
-      console.log('Texte justifié écrit dans le fichier justified_text.txt');
-    }
-  });*/
-
   return justified_text;
 }
 
+/**
+ * Créez la route `/api/token`
+ */
 function createTokenApi() {
-  // Créez la route `/api/token`
-
   app.post('/api/token', (req, res) => {
     const { email } = req.body;
-
     // Vérifiez si l'email est fourni dans la requête
     if (!email) {
       return res.status(400).json({ message: 'veuillez fournir un email' });
     }
-    if (checkEmail(email)) {
-      // Génére un token unique 
-      // modifie la durée d'expiration
+    if (checkEmailFormat(email)) {
       var token = createToken(email, secretKey);
-      console.log(token);
       createUser(email, token);
       res.status(200).json({ token });
     } else {
       res.status(400).json({ message: 'invalid email' });
     }
-
-
   });
   var port = 3000;
-  // Démarrez le serveur
+  // Demarre le serveur
   listen(port);
-
 }
 
-
+/**
+ * Créez la route `/api/justify`
+ */
 function createJustifyAPI() {
-  // Appliquez le rate limit et l'authentification à la route `/api/justify`
-  app.post('/api/justify', upload.single('fichier'), (req, res) => {
+  app.post('/api/justify',upload.single('fichier'),(req, res) => {
     let text;
     let remainingWords = 0;
-    // TO-DO : attention au ", ', ` 
     const fileBuffer = req.file?.buffer;
-    console.log(fileBuffer);
-    //lecture du file buffer
+
+    //lecture du fichier envoye
     if (fileBuffer) {
       text = fileBuffer.toString('utf-8');
     }
-    console.log(text);
 
     const token = req.header('Authorization')?.split(' ')[1];
-    console.log(token);
 
-    // Vérifiez si le token est fourni dans la requête
     if (!token) {
       console.log("empty token");
       return res.status(400).send({ message: 'Le token est requis' });
@@ -229,15 +216,12 @@ function createJustifyAPI() {
       console.log("text is required");
       return res.status(400).send({ message: 'text is required' });
     }
-    console.log(data);
-    //justification of the text 
-    let justify_text = justifyText(text, lineWidth, remainingWords);
-    res.status(200).send(justify_text);
-
+    let justifiedText = justifyText(text, lineWidth, remainingWords);
+    res.status(200).send(justifiedText);
   });
 
   var port = 8080;
-  // Démarrez le serveur
+  //Demarre le serveur
   listen(port);
 }
 
