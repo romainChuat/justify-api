@@ -3,18 +3,20 @@ import express from 'express';
 import bodyParser from 'body-parser';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
+const multer = require('multer');
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
 
 const lineWidth = 80;
 
 // Créez une instance de l'application Express
-const app = express();
+export const app = express();
 
 // Configurez bodyParser pour analyser le JSON dans les requêtes
 app.use(bodyParser.json());
 
-let tokens: string[] = [];
-const secretKey = 'votre_cle_secrete';
-
+const secretKey = '123456';
+export let data: { email: string; token: string; wordCount: number; expirationDate: Date }[] = [];
 
 
 function listen(port: number) {
@@ -24,17 +26,96 @@ function listen(port: number) {
   });
 }
 
-export function createToken(email: string) {
-  if(email == '') {
-    throw new Error('email is empty');
+/** 
+ * Check if the token is valid 
+ **/
+export function checkToken(token: string) {
+  if(token == '') return false;
+  for(let i = 0; i < data.length; i++) {
+    if(data[i].token == token) {
+      return true;
+    }
   }
-  return jwt.sign({ email }, secretKey, { expiresIn: '1h' });
+  return false;
+}
+export function checkEmail(email: string) {
+  if(email == '') return false;
+  const emailFormat = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  if(email.match(emailFormat)){
+    return true;
+  }
+  return false;
 }
 
+export function createToken(email: string, key : string) {
+  if(email == '' || key == '' ) return '';
+  let token =  jwt.sign({ email }, key, { expiresIn: '24h' });
+  return token;
+}
+
+export function createUser(email: string, token: string){
+  if(email == '' || token == '') {
+    return; 
+  }; 
+  // check if the email already exists
+  for(let i = 0; i < data.length; i++) {
+    if(data[i].email == email) {
+      data[i].token = token;
+      data[i].wordCount = 0;
+      return;
+    }
+  }
+  let expirationDate = new Date();
+  //rajouter 24h en millisecondes
+  expirationDate.setTime(expirationDate.getTime() + 86400000);
+  data.push({email: email, token: token, wordCount: 0, expirationDate: expirationDate});
+}
+
+
+
+/**
+ * Check if the number of words is less than 80000 for the day 
+ */
+export function checkWords(token: string, text: string) {
+  let words = text.split(' ').length-1;
+  if(token == '') return -1;
+  if(words > 80000) return 0;   
+  let remainingWords = 0;
+  for(let i = 0; i < data.length; i++) {
+    if(data[i].token == token) {
+      let date = new Date();
+      let expirationDate = data[i].expirationDate.getTime();
+      //vérifier si la date est est la même que la date d'expiration 
+      //console.log("date :"+date.getTime());
+      //console.log("expiration :"+expirationDate);
+
+      if(date.getTime() > expirationDate) {
+        data[i].wordCount = words;
+        //console.log("1 word count"+ data[i].wordCount);
+        data[i].expirationDate.setTime(expirationDate + 86400000);
+      }else{
+        let newWordCount = data[i].wordCount + words;
+        //console.log("newWord count :" + newWordCount);
+        if(newWordCount > 80000){
+          return 0;
+        }
+        data[i].wordCount = newWordCount; 
+        //console.log("Word count :" + data[i].wordCount);
+
+      }
+      remainingWords = 80000 - data[i].wordCount;
+    }
+  }
+  return remainingWords;
+}
+
+
+
 // A améliorer
-function JustifyText(text: string, lineWidth: number) {
+export function justifyText(text: string, lineWidth: number, remainingWords: number) {
   const words = text.split(' ');
-  let lines: string[] = [''];
+  let lines: string[] = ['Remaining Words: ' + remainingWords]; 
+  lines.push('');
   let current_line = '';
 
   for (let j = 0; j < words.length; j++) {
@@ -48,7 +129,7 @@ function JustifyText(text: string, lineWidth: number) {
   lines.push(current_line);
 
   //répartision des espaces
-  for (let i = 0; i < lines.length; i++) {
+  for (let i = 1; i < lines.length; i++) {
     if (lines[i].length < lineWidth) {
       let words_line = lines[i].split(' ');
       let nb_gaps = words_line.length - 1;
@@ -68,7 +149,18 @@ function JustifyText(text: string, lineWidth: number) {
       }
     }
   }
-  return lines.join('\n');
+  
+  let justified_text = lines.join('\n');
+  
+  /*fs.writeFile('justified_text.txt', justified_text, 'utf8', (err) => {
+    if (err) {
+      console.error('Erreur lors de l\'écriture du fichier :', err);
+    } else {
+      console.log('Texte justifié écrit dans le fichier justified_text.txt');
+    }
+  });*/
+
+  return justified_text;
 }
 
 function createTokenApi() {
@@ -81,14 +173,18 @@ function createTokenApi() {
     if (!email) {
       return res.status(400).json({ message: 'veuillez fournir un email' });
     }
+    if(checkEmail(email)){
+      // Génére un token unique 
+      // modifie la durée d'expiration
+      var token = createToken(email, secretKey);    
+      console.log(token);
+      createUser(email,token);
+      res.status(200).json({ token });
+    }else{
+      res.status(400).json({ message : 'invalid email' });
+    }
 
-    // Génére un token unique 
-    // modifie la durée d'expiration
-    var token = createToken(email);    
-    console.log(token);
-    tokens.push(token);
-
-    const result = res.status(200).json({ token });
+    
   });
   var port = 3000;
   // Démarrez le serveur
@@ -97,52 +193,56 @@ function createTokenApi() {
 }
 
 
-function createJustifyAPI(tokens: string[]) {
-  
+function createJustifyAPI() {
   // Appliquez le rate limit et l'authentification à la route `/api/justify`
-  app.post('/api/justify', (req, res) => {
-    const text = req.body.text;
+  app.post('/api/justify', upload.single('fichier'),(req, res) => {
+    let text;
+    let remainingWords = 0;
     // TO-DO : attention au ", ', ` 
-
-    const token = req.body.token;
-    if (!tokens.includes(token)) {
-      return res.status(400).json({ message: 'invalid token' });
+    const fileBuffer = req.file?.buffer;
+    console.log(fileBuffer);
+    //lecture du file buffer
+    if(fileBuffer){
+      text = fileBuffer.toString('utf-8');
     }
-    if (!text) {
-      return res.status(400).json({ message: 'Le texte est requis' });
+    console.log(text);
+
+    const token = req.header('Authorization')?.split(' ')[1];
+    console.log(token);
+
+    // Vérifiez si le token est fourni dans la requête
+    if (!token) {
+      console.log("empty token");
+      return res.status(400).send({ message: 'Le token est requis' });
     }
-    console.log(tokens);
-
-    //justification du text        
-    let justified_text = JustifyText(text, lineWidth);
-    res.status(200).send(justified_text);
-
+    if (!checkToken(token)) {
+      console.log("invalid token");
+      return res.status(400).send({ message: 'invalid token' });
+    }
+    if(text){
+      remainingWords = checkWords(token,text);
+      if(remainingWords == 0) {
+        console.log("Payment Required");
+        return res.status(402).send({ message: 'Payment Required' });
+      }
+    }else{
+      console.log("text is required");
+      return res.status(400).send({ message: 'text is required' });
+    }
+    console.log(data);
+    //justification of the text 
+    let justify_text = justifyText(text, lineWidth,remainingWords);
+    res.status(200).send(justify_text);
   });
+
   var port = 8080;
   // Démarrez le serveur
   listen(port);
 }
 
-var test = `Longtemps, je me suis couché de bonne heure. Parfois, à peine ma bougie éteinte, mes yeux se fermaient si vite que je n’avais pas le temps de me dire: «Je m’endors.» Et, une demi-heure après, la pensée qu’il était temps de chercher le sommeil m’éveillait; je voulais poser le volume que je croyais avoir dans les mains et souffler ma lumière; je n’avais pas cessé en dormant de faire des réflexions sur ce que je venais de lire, mais ces réflexions avaient pris un tour un peu particulier; il me semblait que j’étais moi-même ce dont parlait l’ouvrage: une église, un quatuor, la rivalité de François Ier et de Charles-Quint. 
-Cette croyance survivait pendant quelques secondes à mon réveil; elle ne choquait pas ma raison, mais pesait comme des écailles sur mes yeux et les empêchait de se rendre compte que le bougeoir n’était plus allumé. 
- Puis elle commençait à me devenir inintelligible, comme après la métempsycose les pensées d’une existence antérieure; le sujet du livre se détachait de moi, j’étais libre de m’y appliquer ou non; aussitôt je recouvrais la vue et j’étais bien étonné de trouver autour de moi une obscurité, douce et reposante pour mes yeux, mais peut-être plus encore pour mon esprit, à qui elle apparaissait comme une chose sans cause, incompréhensible, comme une chose vraiment obscure. Je me demandais quelle heure il pouvait être; j’entendais le sifflement des trains qui, plus ou moins éloigné, comme le chant d’un oiseau dans une forêt, relevant les distances, me décrivait l’étendue de la campagne déserte où le voyageur se hâte vers la station prochaine; et le petit chemin qu’il suit va être gravé dans son souvenir par l’excitation qu’il doit à des lieux nouveaux, à des actes inaccoutumés, à la causerie récente et aux adieux sous la lampe étrangère qui le suivent encore dans le silence de la nuit, à la douceur prochaine du retour.`
-
-
 createTokenApi();
-createJustifyAPI(tokens);
+createJustifyAPI();
 
-
-/*var justified = JustifyText(test, lineWidth);
-console.log(justified);*/
-
-
-/*fs.writeFile('justified_text.txt', justified, 'utf8', (err) => {
-  if (err) {
-    console.error('Erreur lors de l\'écriture du fichier :', err);
-  } else {
-    console.log('Texte justifié écrit dans le fichier justified_text.txt');
-  }
-});*/
 
 
 
